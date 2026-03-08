@@ -436,7 +436,6 @@ describe("createLaneTextDeliverer", () => {
 
   it("retains preview on ambiguous API error during final", async () => {
     const harness = createHarness({ answerMessageId: 999 });
-    // Plain Error with no error_code → ambiguous, prefer incomplete over duplicate
     harness.editPreview.mockRejectedValue(new Error("500: Internal Server Error"));
 
     const result = await harness.deliverLaneText({
@@ -496,6 +495,55 @@ describe("createLaneTextDeliverer", () => {
     expect(harness.lanes.answer.lastPartialText).toBe("");
     expect(harness.activePreviewLifecycleByLane.answer).toBe("transient");
     expect(harness.retainPreviewOnCleanupByLane.answer).toBe(false);
+  });
+
+  it("does not delete orphaned preview when fallback send fails", async () => {
+    const harness = createHarness({ answerMessageId: 555 });
+    harness.sendPayload.mockResolvedValue(false);
+
+    const result = await harness.deliverLaneText({
+      laneName: "answer",
+      text: "Final with image",
+      payload: { text: "Final with image", mediaUrl: "file:///tmp/photo.png" },
+      infoKind: "final",
+    });
+
+    expect(result).toBe("skipped");
+    expect(harness.sendPayload).toHaveBeenCalledTimes(1);
+    expect(harness.deletePreviewMessage).not.toHaveBeenCalled();
+  });
+
+  it("logs error but does not throw when orphaned preview cleanup fails", async () => {
+    const harness = createHarness({ answerMessageId: 555 });
+    harness.deletePreviewMessage.mockRejectedValue(new Error("404: message not found"));
+
+    const result = await harness.deliverLaneText({
+      laneName: "answer",
+      text: "Final with image",
+      payload: { text: "Final with image", mediaUrl: "file:///tmp/photo.png" },
+      infoKind: "final",
+    });
+
+    expect(result).toBe("sent");
+    expect(harness.deletePreviewMessage).toHaveBeenCalledWith(555);
+    expect(harness.log).toHaveBeenCalledWith(
+      expect.stringContaining("orphaned preview cleanup failed"),
+    );
+  });
+
+  it("deletes orphaned preview created by stop() during fallback", async () => {
+    const harness = createHarness({ answerMessageIdAfterStop: 888 });
+
+    const result = await harness.deliverLaneText({
+      laneName: "answer",
+      text: "Final with image",
+      payload: { text: "Final with image", mediaUrl: "file:///tmp/photo.png" },
+      infoKind: "final",
+    });
+
+    expect(result).toBe("sent");
+    expect(harness.sendPayload).toHaveBeenCalledTimes(1);
+    expect(harness.deletePreviewMessage).toHaveBeenCalledWith(888);
   });
 
   it("keeps the active preview when an archived final edit target is missing", async () => {
@@ -582,14 +630,12 @@ describe("createLaneTextDeliverer", () => {
   });
 
   it("retains when sendMayHaveLanded is true and a prior preview was visible", async () => {
-    // Stream has a messageId (visible preview) but loses it after stop
     const stream = createTestDraftStream({ messageId: 999 });
     stream.sendMayHaveLanded.mockReturnValue(true);
     const harness = createHarness({
       answerStream: stream,
       answerHasStreamedMessage: true,
     });
-    // Simulate messageId lost after stop (e.g. forceNewMessage or timeout)
     harness.stopDraftLane.mockImplementation(async (lane: DraftLaneState) => {
       stream.setMessageId(undefined);
       await lane.stream?.stop();
