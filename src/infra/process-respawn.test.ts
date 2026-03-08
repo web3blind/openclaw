@@ -155,6 +155,27 @@ describe("restartGatewayProcessWithFreshPid", () => {
     expect(spawnMock).not.toHaveBeenCalled();
   });
 
+  it("returns failed when Scheduled Task restart helper fails on Windows", () => {
+    clearSupervisorHints();
+    setPlatform("win32");
+    process.env.OPENCLAW_SERVICE_MARKER = "openclaw";
+    process.env.OPENCLAW_SERVICE_KIND = "gateway";
+    triggerOpenClawRestartMock.mockReturnValue({
+      ok: false,
+      method: "schtasks",
+      detail: "ERROR: Task not found.",
+    });
+
+    const result = restartGatewayProcessWithFreshPid();
+
+    expect(result).toEqual({
+      mode: "failed",
+      detail: "ERROR: Task not found.",
+    });
+    expect(triggerOpenClawRestartMock).toHaveBeenCalledOnce();
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
   it("keeps generic service markers out of non-Windows supervisor detection", () => {
     clearSupervisorHints();
     setPlatform("linux");
