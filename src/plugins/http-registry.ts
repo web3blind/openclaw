@@ -1,5 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { requireActiveExtensionHostRegistry } from "../extension-host/active-registry.js";
+import {
+  addExtensionHostHttpRoute,
+  listExtensionHostHttpRoutes,
+  removeExtensionHostHttpRoute,
+  replaceExtensionHostHttpRoute,
+} from "../extension-host/runtime-registry.js";
 import { normalizePluginHttpPath } from "./http-path.js";
 import { findOverlappingPluginHttpRoute } from "./http-route-overlap.js";
 import type { PluginHttpRouteRegistration, PluginRegistry } from "./registry.js";
@@ -23,8 +29,7 @@ export function registerPluginHttpRoute(params: {
   registry?: PluginRegistry;
 }): () => void {
   const registry = params.registry ?? requireActiveExtensionHostRegistry();
-  const routes = registry.httpRoutes ?? [];
-  registry.httpRoutes = routes;
+  const routes = listExtensionHostHttpRoutes(registry);
 
   const normalizedPath = normalizePluginHttpPath(params.path, params.fallbackPath);
   const suffix = params.accountId ? ` for account "${params.accountId}"` : "";
@@ -70,7 +75,6 @@ export function registerPluginHttpRoute(params: {
     params.log?.(
       `plugin: replacing stale webhook path ${normalizedPath} (${routeMatch})${suffix}${pluginHint}`,
     );
-    routes.splice(existingIndex, 1);
   }
 
   const entry: PluginHttpRouteRegistration = {
@@ -81,12 +85,17 @@ export function registerPluginHttpRoute(params: {
     pluginId: params.pluginId,
     source: params.source,
   };
-  routes.push(entry);
+  if (existingIndex >= 0) {
+    replaceExtensionHostHttpRoute({
+      registry,
+      index: existingIndex,
+      entry,
+    });
+  } else {
+    addExtensionHostHttpRoute(registry, entry);
+  }
 
   return () => {
-    const index = routes.indexOf(entry);
-    if (index >= 0) {
-      routes.splice(index, 1);
-    }
+    removeExtensionHostHttpRoute(registry, entry);
   };
 }

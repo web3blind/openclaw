@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import {
+  addExtensionHostHttpRoute,
   getExtensionHostGatewayHandlers,
   hasExtensionHostRuntimeEntries,
   listExtensionHostCliRegistrations,
@@ -8,6 +9,9 @@ import {
   listExtensionHostProviderRegistrations,
   listExtensionHostServiceRegistrations,
   listExtensionHostToolRegistrations,
+  removeExtensionHostHttpRoute,
+  replaceExtensionHostHttpRoute,
+  setExtensionHostGatewayHandler,
 } from "./runtime-registry.js";
 
 describe("extension host runtime registry accessors", () => {
@@ -25,7 +29,7 @@ describe("extension host runtime registry accessors", () => {
     expect(hasExtensionHostRuntimeEntries(providerRegistry)).toBe(true);
 
     const routeRegistry = createEmptyPluginRegistry();
-    routeRegistry.httpRoutes.push({
+    addExtensionHostHttpRoute(routeRegistry, {
       path: "/plugins/demo",
       handler: vi.fn(),
       auth: "plugin",
@@ -36,7 +40,11 @@ describe("extension host runtime registry accessors", () => {
     expect(hasExtensionHostRuntimeEntries(routeRegistry)).toBe(true);
 
     const gatewayRegistry = createEmptyPluginRegistry();
-    gatewayRegistry.gatewayHandlers["demo.echo"] = vi.fn();
+    setExtensionHostGatewayHandler({
+      registry: gatewayRegistry,
+      method: "demo.echo",
+      handler: vi.fn(),
+    });
     expect(hasExtensionHostRuntimeEntries(gatewayRegistry)).toBe(true);
   });
 
@@ -80,7 +88,7 @@ describe("extension host runtime registry accessors", () => {
       commands: ["demo"],
       register: () => undefined,
     });
-    registry.httpRoutes.push({
+    addExtensionHostHttpRoute(registry, {
       path: "/plugins/demo",
       handler: vi.fn(),
       auth: "plugin",
@@ -88,12 +96,49 @@ describe("extension host runtime registry accessors", () => {
       pluginId: "route-demo",
       source: "test",
     });
-    registry.gatewayHandlers["demo.echo"] = vi.fn();
+    const handler = vi.fn();
+    setExtensionHostGatewayHandler({
+      registry,
+      method: "demo.echo",
+      handler,
+    });
 
     expect(listExtensionHostToolRegistrations(registry)).toBe(registry.tools);
     expect(listExtensionHostServiceRegistrations(registry)).toBe(registry.services);
     expect(listExtensionHostCliRegistrations(registry)).toBe(registry.cliRegistrars);
-    expect(listExtensionHostHttpRoutes(registry)).toBe(registry.httpRoutes);
-    expect(getExtensionHostGatewayHandlers(registry)).toBe(registry.gatewayHandlers);
+    expect(listExtensionHostHttpRoutes(registry)).toEqual(registry.httpRoutes);
+    expect(getExtensionHostGatewayHandlers(registry)).toEqual(registry.gatewayHandlers);
+    expect(getExtensionHostGatewayHandlers(registry)["demo.echo"]).toBe(handler);
+  });
+
+  it("keeps legacy route and gateway mirrors synchronized with host-owned state", () => {
+    const registry = createEmptyPluginRegistry();
+    const firstHandler = vi.fn();
+    const secondHandler = vi.fn();
+    const entry = {
+      path: "/plugins/demo",
+      handler: firstHandler,
+      auth: "plugin" as const,
+      match: "exact" as const,
+      pluginId: "route-demo",
+      source: "test",
+    };
+
+    addExtensionHostHttpRoute(registry, entry);
+    setExtensionHostGatewayHandler({
+      registry,
+      method: "demo.echo",
+      handler: firstHandler,
+    });
+    replaceExtensionHostHttpRoute({
+      registry,
+      index: 0,
+      entry: { ...entry, handler: secondHandler },
+    });
+    removeExtensionHostHttpRoute(registry, entry);
+
+    expect(registry.httpRoutes).toHaveLength(1);
+    expect(registry.httpRoutes[0]?.handler).toBe(secondHandler);
+    expect(getExtensionHostGatewayHandlers(registry)).toEqual(registry.gatewayHandlers);
   });
 });

@@ -5,12 +5,13 @@ import {
   logExtensionHostPluginDiagnostics,
   resolveExtensionHostGatewayMethods,
 } from "./gateway-methods.js";
+import { setExtensionHostGatewayHandler } from "./runtime-registry.js";
 
 describe("resolveExtensionHostGatewayMethods", () => {
   it("adds plugin methods without duplicating base methods", () => {
     const registry = createEmptyPluginRegistry();
-    registry.gatewayHandlers.health = vi.fn();
-    registry.gatewayHandlers["plugin.echo"] = vi.fn();
+    setExtensionHostGatewayHandler({ registry, method: "health", handler: vi.fn() });
+    setExtensionHostGatewayHandler({ registry, method: "plugin.echo", handler: vi.fn() });
 
     expect(
       resolveExtensionHostGatewayMethods({
@@ -26,7 +27,7 @@ describe("createExtensionHostGatewayExtraHandlers", () => {
     const pluginHandler = vi.fn();
     const callerHandler = vi.fn();
     const registry = createEmptyPluginRegistry();
-    registry.gatewayHandlers.demo = pluginHandler;
+    setExtensionHostGatewayHandler({ registry, method: "demo", handler: pluginHandler });
 
     const handlers = createExtensionHostGatewayExtraHandlers({
       registry,

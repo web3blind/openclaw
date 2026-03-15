@@ -43,6 +43,10 @@ import {
   resolveExtensionToolRegistration,
   resolveExtensionTypedHookRegistration,
 } from "./runtime-registrations.js";
+import {
+  getExtensionHostGatewayHandlers,
+  listExtensionHostHttpRoutes,
+} from "./runtime-registry.js";
 
 export type PluginTypedHookPolicy = {
   allowPromptInjection?: boolean;
@@ -115,7 +119,7 @@ export function createExtensionHostPluginRegistrationActions(params: {
     handler: GatewayRequestHandler,
   ) => {
     const result = resolveExtensionGatewayMethodRegistration({
-      existing: registry.gatewayHandlers,
+      existing: { ...getExtensionHostGatewayHandlers(registry) },
       coreGatewayMethods,
       method,
       handler,
@@ -140,7 +144,7 @@ export function createExtensionHostPluginRegistrationActions(params: {
 
   const registerHttpRoute = (record: PluginRecord, route: OpenClawPluginHttpRouteParams) => {
     const result = resolveExtensionHttpRouteRegistration({
-      existing: registry.httpRoutes,
+      existing: [...listExtensionHostHttpRoutes(registry)],
       ownerPluginId: record.id,
       ownerSource: record.source,
       route,

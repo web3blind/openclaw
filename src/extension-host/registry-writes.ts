@@ -24,6 +24,11 @@ import type {
   ExtensionHostServiceRegistration,
   ExtensionHostToolRegistration,
 } from "./runtime-registrations.js";
+import {
+  addExtensionHostHttpRoute,
+  replaceExtensionHostHttpRoute,
+  setExtensionHostGatewayHandler,
+} from "./runtime-registry.js";
 
 export function addExtensionGatewayMethodRegistration(params: {
   registry: PluginRegistry;
@@ -31,7 +36,11 @@ export function addExtensionGatewayMethodRegistration(params: {
   method: string;
   handler: GatewayRequestHandler;
 }): void {
-  params.registry.gatewayHandlers[params.method] = params.handler;
+  setExtensionHostGatewayHandler({
+    registry: params.registry,
+    method: params.method,
+    handler: params.handler,
+  });
   params.record.gatewayMethods.push(params.method);
 }
 
@@ -46,12 +55,16 @@ export function addExtensionHttpRouteRegistration(params: {
     if (params.existingIndex === undefined) {
       return;
     }
-    params.registry.httpRoutes[params.existingIndex] = params.entry as PluginHttpRouteRegistration;
+    replaceExtensionHostHttpRoute({
+      registry: params.registry,
+      index: params.existingIndex,
+      entry: params.entry as PluginHttpRouteRegistration,
+    });
     return;
   }
 
   params.record.httpRoutes += 1;
-  params.registry.httpRoutes.push(params.entry as PluginHttpRouteRegistration);
+  addExtensionHostHttpRoute(params.registry, params.entry as PluginHttpRouteRegistration);
 }
 
 export function addExtensionChannelRegistration(params: {
