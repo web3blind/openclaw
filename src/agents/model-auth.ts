@@ -26,7 +26,7 @@ import {
   CUSTOM_LOCAL_AUTH_MARKER,
   isKnownEnvApiKeyMarker,
   isNonSecretApiKeyMarker,
-  resolveNonEnvSecretRefApiKeyMarker,
+  NON_ENV_SECRETREF_MARKER,
 } from "./model-auth-markers.js";
 import {
   requireApiKey,
@@ -190,84 +190,24 @@ function isCustomLocalProviderConfig(providerConfig: ModelProviderConfig): boole
   );
 }
 
-function readConfiguredOrManagedApiKey(value: unknown): string | undefined {
-  const literal = normalizeOptionalSecretInput(value);
-  if (literal) {
-    return literal;
-  }
-  const ref = coerceSecretRef(value);
-  return ref ? resolveNonEnvSecretRefApiKeyMarker(ref.source) : undefined;
+function isManagedSecretRefApiKeyMarker(apiKey: string | undefined): boolean {
+  return apiKey?.trim() === NON_ENV_SECRETREF_MARKER;
 }
 
-function readLegacyGrokFallbackAuth(
-  config: OpenClawConfig | undefined,
-): { apiKey: string; source: string } | undefined {
-  const apiKey = readConfiguredOrManagedApiKey(config?.tools?.web?.search?.grok?.apiKey);
-  return apiKey ? { apiKey, source: "tools.web.search.grok.apiKey" } : undefined;
-}
+type SyntheticProviderAuthResolution = {
+  auth?: ResolvedProviderAuth;
+  blockedOnManagedSecretRef?: boolean;
+};
 
-function readXaiConfigBackedAuth(
-  config: OpenClawConfig | undefined,
-): { apiKey: string; source: string } | undefined {
-  const pluginConfig = config?.plugins?.entries?.xai?.config as
-    | { webSearch?: { apiKey?: unknown } }
-    | undefined;
-  const pluginApiKey = readConfiguredOrManagedApiKey(pluginConfig?.webSearch?.apiKey);
-  if (pluginApiKey) {
-    return {
-      apiKey: pluginApiKey,
-      source: "plugins.entries.xai.config.webSearch.apiKey",
-    };
-  }
-  return readLegacyGrokFallbackAuth(config);
-}
-
-function resolveXaiConfigBackedRuntimeAuth(params: {
-  cfg: OpenClawConfig | undefined;
-}): ResolvedProviderAuth | undefined {
-  const directAuth = readXaiConfigBackedAuth(params.cfg);
-  if (directAuth && !isNonSecretApiKeyMarker(directAuth.apiKey)) {
-    return {
-      apiKey: directAuth.apiKey,
-      source: directAuth.source,
-      mode: "api-key",
-    };
-  }
-
-  const runtimeConfig = getRuntimeConfigSnapshot();
-  if (!runtimeConfig || runtimeConfig === params.cfg) {
-    return undefined;
-  }
-
-  const runtimeAuth = readXaiConfigBackedAuth(runtimeConfig);
-  if (!runtimeAuth || isNonSecretApiKeyMarker(runtimeAuth.apiKey)) {
-    return undefined;
-  }
-  return {
-    apiKey: runtimeAuth.apiKey,
-    source: runtimeAuth.source,
-    mode: "api-key",
-  };
-}
-
-function resolveSyntheticLocalProviderAuth(params: {
+function resolveProviderSyntheticRuntimeAuth(params: {
   cfg: OpenClawConfig | undefined;
   provider: string;
-}): ResolvedProviderAuth | null {
-  if (normalizeProviderId(params.provider) === "xai") {
-    const xaiConfigBackedAuth = resolveXaiConfigBackedRuntimeAuth({
-      cfg: params.cfg,
-    });
-    if (xaiConfigBackedAuth) {
-      return xaiConfigBackedAuth;
-    }
-  }
-
-  const tryPluginSyntheticAuth = (
+}): SyntheticProviderAuthResolution {
+  const resolveFromConfig = (
     config: OpenClawConfig | undefined,
   ): ResolvedProviderAuth | undefined => {
     const providerConfig = resolveProviderConfig(config, params.provider);
-    const syntheticAuth = resolveProviderSyntheticAuthWithPlugin({
+    return resolveProviderSyntheticAuthWithPlugin({
       provider: params.provider,
       config,
       context: {
@@ -276,29 +216,40 @@ function resolveSyntheticLocalProviderAuth(params: {
         providerConfig,
       },
     });
-    if (
-      syntheticAuth &&
-      !(
-        normalizeProviderId(params.provider) === "xai" &&
-        isNonSecretApiKeyMarker(syntheticAuth.apiKey)
-      )
-    ) {
-      return syntheticAuth;
-    }
-    return undefined;
   };
 
-  const directPluginSyntheticAuth = tryPluginSyntheticAuth(params.cfg);
-  if (directPluginSyntheticAuth) {
-    return directPluginSyntheticAuth;
+  const directAuth = resolveFromConfig(params.cfg);
+  if (!directAuth) {
+    return {};
+  }
+  if (!isManagedSecretRefApiKeyMarker(directAuth.apiKey)) {
+    return { auth: directAuth };
   }
 
   const runtimeConfig = getRuntimeConfigSnapshot();
-  if (runtimeConfig && runtimeConfig !== params.cfg) {
-    const runtimePluginSyntheticAuth = tryPluginSyntheticAuth(runtimeConfig);
-    if (runtimePluginSyntheticAuth) {
-      return runtimePluginSyntheticAuth;
-    }
+  if (!runtimeConfig || runtimeConfig === params.cfg) {
+    return { blockedOnManagedSecretRef: true };
+  }
+
+  const runtimeAuth = resolveFromConfig(runtimeConfig);
+  if (!runtimeAuth || isNonSecretApiKeyMarker(runtimeAuth.apiKey)) {
+    return { blockedOnManagedSecretRef: true };
+  }
+  return {
+    auth: runtimeAuth,
+  };
+}
+
+function resolveSyntheticLocalProviderAuth(params: {
+  cfg: OpenClawConfig | undefined;
+  provider: string;
+}): ResolvedProviderAuth | null {
+  const syntheticProviderAuth = resolveProviderSyntheticRuntimeAuth(params);
+  if (syntheticProviderAuth.auth) {
+    return syntheticProviderAuth.auth;
+  }
+  if (syntheticProviderAuth.blockedOnManagedSecretRef) {
+    return null;
   }
 
   const providerConfig = resolveProviderConfig(params.cfg, params.provider);

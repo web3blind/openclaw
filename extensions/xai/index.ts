@@ -3,8 +3,8 @@ import {
   resolveNonEnvSecretRefApiKeyMarker,
 } from "openclaw/plugin-sdk/provider-auth";
 import { defineSingleProviderPluginEntry } from "openclaw/plugin-sdk/provider-entry";
-import { createToolStreamWrapper } from "openclaw/plugin-sdk/provider-stream";
 import { applyXaiModelCompat } from "openclaw/plugin-sdk/provider-models";
+import { createToolStreamWrapper } from "openclaw/plugin-sdk/provider-stream";
 import { resolveProviderWebSearchPluginConfig } from "openclaw/plugin-sdk/provider-web-search";
 import { normalizeSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import { applyXaiConfig, XAI_DEFAULT_MODEL_REF } from "./onboard.js";
@@ -112,6 +112,10 @@ export default defineSingleProviderPluginEntry({
         ),
         ctx.extraParams?.tool_stream !== false,
       ),
+    // Provider-specific fallback auth stays owned by the xAI plugin so core
+    // auth/discovery code can consume it generically without parsing xAI's
+    // private config layout. Callers may receive a real key from the active
+    // runtime snapshot or a non-secret SecretRef marker from source config.
     resolveSyntheticAuth: ({ config }) => {
       const fallbackAuth = resolveXaiProviderFallbackAuth(config);
       if (!fallbackAuth) {

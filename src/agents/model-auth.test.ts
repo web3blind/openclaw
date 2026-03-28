@@ -25,8 +25,10 @@ vi.mock("../plugins/provider-runtime.js", () => ({
     provider: string;
     config?: {
       plugins?: {
+        enabled?: boolean;
         entries?: {
           xai?: {
+            enabled?: boolean;
             config?: {
               webSearch?: {
                 apiKey?: unknown;
@@ -48,6 +50,12 @@ vi.mock("../plugins/provider-runtime.js", () => ({
     context: { providerConfig?: { api?: string; baseUrl?: string; models?: unknown[] } };
   }) => {
     if (params.provider === "xai") {
+      if (
+        params.config?.plugins?.enabled === false ||
+        params.config?.plugins?.entries?.xai?.enabled === false
+      ) {
+        return undefined;
+      }
       const pluginApiKey = params.config?.plugins?.entries?.xai?.config?.webSearch?.apiKey;
       if (typeof pluginApiKey === "string" && pluginApiKey.trim()) {
         return {
@@ -56,10 +64,24 @@ vi.mock("../plugins/provider-runtime.js", () => ({
           mode: "api-key" as const,
         };
       }
+      if (pluginApiKey && typeof pluginApiKey === "object") {
+        return {
+          apiKey: NON_ENV_SECRETREF_MARKER,
+          source: "plugins.entries.xai.config.webSearch.apiKey",
+          mode: "api-key" as const,
+        };
+      }
       const legacyApiKey = params.config?.tools?.web?.search?.grok?.apiKey;
       if (typeof legacyApiKey === "string" && legacyApiKey.trim()) {
         return {
           apiKey: legacyApiKey.trim(),
+          source: "tools.web.search.grok.apiKey",
+          mode: "api-key" as const,
+        };
+      }
+      if (legacyApiKey && typeof legacyApiKey === "object") {
+        return {
+          apiKey: NON_ENV_SECRETREF_MARKER,
           source: "tools.web.search.grok.apiKey",
           mode: "api-key" as const,
         };
@@ -429,6 +451,29 @@ describe("resolveApiKeyForProvider", () => {
       source: "plugins.entries.xai.config.webSearch.apiKey",
       mode: "api-key",
     });
+  });
+
+  it("does not reuse xai fallback auth when the xai plugin is disabled", async () => {
+    await expect(
+      resolveApiKeyForProvider({
+        provider: "xai",
+        cfg: {
+          plugins: {
+            entries: {
+              xai: {
+                enabled: false,
+                config: {
+                  webSearch: {
+                    apiKey: "xai-plugin-fallback-key", // pragma: allowlist secret
+                  },
+                },
+              },
+            },
+          },
+        },
+        store: { version: 1, profiles: {} },
+      }),
+    ).rejects.toThrow('No API key found for provider "xai"');
   });
 });
 
