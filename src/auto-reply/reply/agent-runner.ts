@@ -16,6 +16,7 @@ import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnosti
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { CommandLaneClearedError, GatewayDrainingError } from "../../process/command-queue.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
+import { resolveMessageChannel } from "../../utils/message-channel.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   buildFallbackClearedNotice,
