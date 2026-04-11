@@ -667,6 +667,12 @@ export async function runReplyAgent(params: {
       activeSessionEntry?.responseUsage ??
       (sessionKey ? activeSessionStore?.[sessionKey]?.responseUsage : undefined);
     const responseUsageMode = resolveResponseUsageMode(responseUsageRaw);
+    const effectiveMessageChannel = resolveMessageChannel(
+      followupRun.run.messageProvider,
+      sessionCtx.Surface ?? sessionCtx.Provider,
+    );
+    const shouldSurfaceFallbackNoticesToUser =
+      verboseEnabled || effectiveMessageChannel === "telegram";
     if (responseUsageMode !== "off" && hasNonzeroUsage(usage)) {
       const authMode = resolveModelAuthMode(providerUsed, cfg);
       const showCost = authMode === "api-key";
@@ -723,7 +729,7 @@ export async function runReplyAgent(params: {
           attempts: fallbackAttempts,
         },
       });
-      if (verboseEnabled) {
+      if (shouldSurfaceFallbackNoticesToUser) {
         const fallbackNotice = buildFallbackNotice({
           selectedProvider,
           selectedModel,
@@ -750,7 +756,7 @@ export async function runReplyAgent(params: {
           previousActiveModel: fallbackTransition.previousState.activeModel,
         },
       });
-      if (verboseEnabled) {
+      if (shouldSurfaceFallbackNoticesToUser) {
         verboseNotices.push({
           text: buildFallbackClearedNotice({
             selectedProvider,
