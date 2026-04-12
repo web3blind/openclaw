@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
+import { loadConfig } from "../config/config.js";
 import { extractTextFromChatContent } from "../shared/chat-content.js";
 import {
   normalizeAssistantPhase,
@@ -8,9 +9,8 @@ import {
 } from "../shared/chat-message-content.js";
 import { sanitizeAssistantVisibleText } from "../shared/text/assistant-visible-text.js";
 import { stripReasoningTagsFromText } from "../shared/text/reasoning-tags.js";
-import { loadConfig } from "../config/config.js";
-import { sanitizeUserFacingText } from "./pi-embedded-helpers.js";
 import { resolveSubagentSpawnModelSelection } from "./model-selection.js";
+import { sanitizeUserFacingText } from "./pi-embedded-helpers/sanitize-user-facing-text.js";
 import { formatToolDetail, resolveToolDisplay } from "./tool-display.js";
 
 export {

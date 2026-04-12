@@ -10,6 +10,20 @@ const spawnSubagentDirectMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../agents/subagent-spawn.js", () => ({
   spawnSubagentDirect: (...args: unknown[]) => spawnSubagentDirectMock(...args),
+  splitModelRef: (value?: string) => {
+    const raw = typeof value === "string" ? value.trim() : "";
+    if (!raw) {
+      return { provider: undefined, model: undefined };
+    }
+    const slash = raw.indexOf("/");
+    if (slash <= 0 || slash === raw.length - 1) {
+      return { provider: undefined, model: raw };
+    }
+    return {
+      provider: raw.slice(0, slash),
+      model: raw.slice(slash + 1),
+    };
+  },
   SUBAGENT_SPAWN_MODES: ["run", "session"],
 }));
 
@@ -137,8 +151,7 @@ describe("subagents spawn action", () => {
     expect(result).toEqual({
       shouldContinue: false,
       reply: {
-        text:
-          "Delegated task started for beta using openai-codex/gpt-5.4.\nDelegated Task Prompt: do the thing\nSession agent:beta:subagent:test-uuid, run run-spaw.",
+        text: "Delegated task started for beta using openai-codex/gpt-5.4.\nDelegated Task Prompt: do the thing\nSession agent:beta:subagent:test-uuid, run run-spaw.",
       },
     });
     expect(spawnSubagentDirectMock).toHaveBeenCalledWith(
